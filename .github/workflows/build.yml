@@ -58,6 +58,27 @@ jobs:
           print("removed bare duplicate attr declarations:", removed)
           EOF
 
+      - name: Remove quickstep resources that duplicate main resources
+        run: |
+          cd launcher-src/res
+          python3 - <<'EOF'
+          import glob, re
+          TAGS = "dimen|color|string|integer|bool|fraction"
+          main_names = set()
+          for f in glob.glob("values*/*.xml"):
+              s = open(f, encoding="utf-8").read()
+              main_names |= set(re.findall(rf'<({TAGS})\s+name="([^"]+)"', s))
+          removed = 0
+          for f in glob.glob("../quickstep/res/values*/*.xml"):
+              s = open(f, encoding="utf-8").read()
+              for tag, name in sorted(main_names):
+                  pat = re.compile(rf'[ \t]*<{tag}\s+name="{re.escape(name)}"[^>]*?(?:/>|>.*?</{tag}>)[ \t]*\n?', re.S)
+                  s, k = pat.subn("", s)
+                  removed += k
+              open(f, "w", encoding="utf-8").write(s)
+          print("removed quickstep duplicates:", removed)
+          EOF
+
       - name: Generate stubs for missing colors and attributes
         run: |
           cd launcher-src/res
