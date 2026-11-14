@@ -27,13 +27,71 @@ jobs:
           echo "sharedUserId in manifest:"
           grep -n "sharedUserId" decoded/AndroidManifest.xml || echo "none"
 
+      - name: Compile the bridge helper to dex
+        run: |
+          mkdir -p bridge/src/com/abraham/recentsbridge bridge/out
+          cat > bridge/src/com/abraham/recentsbridge/RecentsBridge.java <<'EOF'
+          package com.abraham.recentsbridge;
+
+          import java.util.ArrayList;
+
+          public final class RecentsBridge {
+              private RecentsBridge() {}
+
+              // Step 1 (pass-through): returns the system list unchanged.
+              // Later this will return the list of apps tracked by this app.
+              public static ArrayList passThrough(ArrayList list) {
+                  return list;
+              }
+          }
+          EOF
+          javac -d bridge/out bridge/src/com/abraham/recentsbridge/RecentsBridge.java
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort | tail -1)
+          "$BT/d8" --output bridge bridge/out/com/abraham/recentsbridge/RecentsBridge.class
+          ls -l bridge/classes.dex
+
+      - name: Patch RecentTasksList to call the bridge
+        run: |
+          python3 - <<'EOF'
+          import glob, re
+          files = glob.glob("decoded/smali*/com/android/quickstep/RecentTasksList.smali")
+          assert len(files) == 1, files
+          p = files[0]
+          s = open(p, encoding="utf-8").read()
+          pat = re.compile(r'(invoke-virtual \{v3, v4, v2\}, Lcom/android/quickstep/SystemUiProxy;->getRecentTasks\(II\)Ljava/util/ArrayList;\s*move-result-object v3\n)')
+          n = len(pat.findall(s))
+          assert n == 1, f"expected 1 match, got {n}"
+          s = pat.sub(lambda m: m.group(1) + "\n    invoke-static {v3}, Lcom/abraham/recentsbridge/RecentsBridge;->passThrough(Ljava/util/ArrayList;)Ljava/util/ArrayList;\n\n    move-result-object v3\n", s)
+          open(p, "w", encoding="utf-8").write(s)
+          print("patched", p)
+          EOF
+
       - name: Rebuild APK
         run: java -jar apktool.jar b decoded -o out/unsigned.apk
+
+      - name: Add bridge dex to the APK
+        run: |
+          python3 - <<'EOF'
+          import re, zipfile
+          zin = zipfile.ZipFile("out/unsigned.apk")
+          nums = []
+          for n in zin.namelist():
+              m = re.fullmatch(r'classes(\d*)\.dex', n)
+              if m:
+                  nums.append(int(m.group(1) or 1))
+          nxt = max(nums) + 1
+          newname = "classes.dex" if nxt == 1 else f"classes{nxt}.dex"
+          with zipfile.ZipFile("out/with-bridge.apk", "w", zipfile.ZIP_DEFLATED) as zout:
+              for item in zin.infolist():
+                  zout.writestr(item, zin.read(item.filename))
+              zout.write("bridge/classes.dex", newname)
+          print("added", newname)
+          EOF
 
       - name: Align and sign
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort | tail -1)
-          "$BT/zipalign" -f -p 4 out/unsigned.apk out/aligned.apk
+          "$BT/zipalign" -f -p 4 out/with-bridge.apk out/aligned.apk
           keytool -genkeypair -keystore debug.jks -storepass android -keypass android \
             -alias patch -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=patch" >/dev/null 2>&1
           "$BT/apksigner" sign --ks debug.jks --ks-pass pass:android --key-pass pass:android \
