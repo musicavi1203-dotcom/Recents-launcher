@@ -139,7 +139,7 @@ jobs:
 
           # styles: explicit list only (styles from Material/Preference/AppCompat already exist in those libraries,
           # so they are not stubbed to avoid overriding their look)
-          extra_styles = ["Switch", "Switch.SettingsLib", "Theme.Material3.DynamicColors"]
+          extra_styles = ["Switch", "Switch.SettingsLib", "Theme.Material3", "Theme.Material3.DynamicColors"]
 
           # attributes: only the ones the code references but nothing declares
           # (disabledIconAlpha and loadingIconColor come from a module not included here)
