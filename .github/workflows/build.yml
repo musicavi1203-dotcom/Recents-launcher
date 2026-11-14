@@ -58,70 +58,27 @@ jobs:
           print("removed bare duplicate attr declarations:", removed)
           EOF
 
-      - name: Print duplicate resource names in values
-        run: |
-          cd launcher-src/res
-          dups=$(find values -name '*.xml' -print0 | xargs -0 grep -hoE '<(color|attr|string|dimen|integer|bool|fraction|declare-styleable) name="[^"]+"' | sed -E 's/.*name="//;s/"//' | sort | uniq -d)
-          echo "duplicate names: $(echo "$dups" | grep -c .)"
-          echo "$dups"
-
-      - name: Generate stubs for missing colors and attributes
+      - name: Generate stubs for missing colors
         run: |
           cd launcher-src/res
           python3 - <<'EOF'
           import glob, os, re
-          import xml.etree.ElementTree as ET
           xmls = glob.glob("**/*.xml", recursive=True)
-          text = {f: open(f, encoding="utf-8", errors="ignore").read() for f in xmls}
-          all_text = "\n".join(text.values())
+          all_text = "\n".join(open(f, encoding="utf-8", errors="ignore").read() for f in xmls)
 
-          # colors
           defined_c = set(re.findall(r'name="([^"]+)"', all_text))
           defined_c |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml")}
           used_c = set(re.findall(r'@color/([A-Za-z0-9_]+)', all_text))
           missing_c = sorted(used_c - defined_c)
 
-          # attrs: defined = attr declarations (any form)
-          defined_a = set(re.findall(r'<attr\s+name="([^"]+)"', all_text))
-          defined_a |= set(re.findall(r'type="attr"[^>]*name="([^"]+)"', all_text))
-          defined_a |= set(re.findall(r'name="([^"]+)"[^>]*type="attr"', all_text))
-          # used: ?attr/ and @attr/ refs, plus style items without a type or namespace
-          used_a = set(re.findall(r'\?attr/([A-Za-z0-9_]+)', all_text)) | set(re.findall(r'@attr/([A-Za-z0-9_]+)', all_text))
-          for f in xmls:
-              if not os.path.basename(os.path.dirname(f)).startswith("values"):
-                  continue
-              try:
-                  root = ET.parse(f).getroot()
-              except ET.ParseError:
-                  continue
-              for style in root.iter("style"):
-                  for item in style.iter("item"):
-                      n = item.get("name", "")
-                      if n and ":" not in n and item.get("type") is None:
-                          used_a.add(n)
-          missing_a = sorted(used_a - defined_a)
-
           os.makedirs("values", exist_ok=True)
           lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
           lines += [f'    <color name="{c}">#FF000000</color>' for c in missing_c]
-          lines += [f'    <attr name="{a}" format="reference|color|dimension|float|integer|boolean|string|fraction"/>' for a in missing_a]
           lines.append('</resources>')
           open("values/zz_stubs.xml", "w", encoding="utf-8").write("\n".join(lines) + "\n")
-          print("missing colors:", len(missing_c), " missing attrs:", len(missing_a))
-          print("attrs:", " ".join(missing_a))
+          print("missing colors:", len(missing_c))
+          print(" ".join(missing_c))
           EOF
-
-      - name: Diagnose resources with aapt2
-        continue-on-error: true
-        run: |
-          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
-          PLAT=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort | tail -1)
-          echo "aapt2: $AAPT2"
-          echo "platform: $PLAT"
-          cd launcher-src/res
-          "$AAPT2" compile --dir . -o "$RUNNER_TEMP/compiled-res.zip" 2>&1 | grep -v "^warning" | head -60 || true
-          cd ../..
-          "$AAPT2" link -o "$RUNNER_TEMP/out.apk" -I "$PLAT" --manifest launcher-src/AndroidManifest.xml "$RUNNER_TEMP/compiled-res.zip" 2>&1 | grep -v "^warning" | head -120 || true
 
       - name: Restore framework and SystemUI class jars
         run: |
