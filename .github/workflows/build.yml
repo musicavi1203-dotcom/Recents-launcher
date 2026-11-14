@@ -137,8 +137,9 @@ jobs:
               "floating_dismiss_background_size": "56dp",
           }
 
-          used_s = set(re.findall(r'@style/([A-Za-z0-9_.]+)', all_text))
-          missing_s = sorted(used_s - defined)
+          # styles: explicit list only (styles from Material/Preference/AppCompat already exist in those libraries,
+          # so they are not stubbed to avoid overriding their look)
+          extra_styles = ["Switch", "Switch.SettingsLib", "Theme.Material3.DynamicColors"]
 
           # attributes: only the ones the code references but nothing declares
           # (disabledIconAlpha and loadingIconColor come from a module not included here)
@@ -148,12 +149,11 @@ jobs:
           lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
           lines += [f'    <color name="{c}">#FF000000</color>' for c in missing_c]
           lines += [f'    <dimen name="{d}">{dimen_defaults.get(d, "0dp")}</dimen>' for d in missing_d]
-          lines += [f'    <style name="{s}"/>' for s in missing_s]
+          lines += [f'    <style name="{s}"/>' for s in extra_styles]
           lines += [f'    <attr name="{a}" format="reference|color|dimension|float|integer|boolean|string|fraction"/>' for a in extra_attrs]
           lines.append('</resources>')
           open("values/zz_stubs.xml", "w", encoding="utf-8").write("\n".join(lines) + "\n")
-          print("missing colors:", len(missing_c), " missing dimens:", len(missing_d), " missing styles:", len(missing_s), " extra attrs:", len(extra_attrs))
-          print(" ".join(missing_s))
+          print("missing colors:", len(missing_c), " missing dimens:", len(missing_d), " extra styles:", len(extra_styles), " extra attrs:", len(extra_attrs))
           EOF
 
       - name: Restore framework and SystemUI class jars
