@@ -111,6 +111,18 @@ jobs:
           print("attrs:", " ".join(missing_a))
           EOF
 
+      - name: Diagnose resources with aapt2
+        continue-on-error: true
+        run: |
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
+          PLAT=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort | tail -1)
+          echo "aapt2: $AAPT2"
+          echo "platform: $PLAT"
+          cd launcher-src/res
+          "$AAPT2" compile --dir . -o "$RUNNER_TEMP/compiled-res.zip" 2>&1 | grep -v "^warning" | head -60 || true
+          cd ../..
+          "$AAPT2" link -o "$RUNNER_TEMP/out.apk" -I "$PLAT" --manifest launcher-src/AndroidManifest.xml "$RUNNER_TEMP/compiled-res.zip" 2>&1 | grep -v "^warning" | head -120 || true
+
       - name: Restore framework and SystemUI class jars
         run: |
           mkdir -p app/libs
