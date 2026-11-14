@@ -36,10 +36,10 @@ jobs:
         run: |
           cd launcher-src/res
           mkdir -p values
-          defined_c=$( ( grep -rhoE '<color name="[^"]+"' . | sed 's/<color name="//;s/"//'; ls color 2>/dev/null | sed 's/\.xml$//' ) | sort -u)
+          defined_c=$( ( grep -rhoE 'name="[^"]+"' --include=*.xml . | sed 's/name="//;s/"//'; ls color 2>/dev/null | sed 's/\.xml$//' ) | sort -u)
           used_c=$(grep -rhoE '@color/[A-Za-z0-9_]+' . | sed 's#@color/##' | sort -u)
           missing_c=$(comm -23 <(echo "$used_c") <(echo "$defined_c"))
-          defined_a=$(grep -rhoE '<attr name="[^"]+"' . | sed 's/<attr name="//;s/"//' | sort -u)
+          defined_a=$( (grep -rhoE '<attr name="[^"]+"' . ; grep -rhE 'type="attr"' . | grep -oE 'name="[^"]+"') | sed -E 's/<attr name="//;s/name="//;s/"//' | sort -u)
           used_a=$( (grep -rhoE '<item name="[A-Za-z0-9_]+"' . ; grep -rhoE '[?@]attr/[A-Za-z0-9_]+' .) | sed -E 's/<item name="//;s/"$//;s/[?@]attr\///' | sort -u)
           missing_a=$(comm -23 <(echo "$used_a") <(echo "$defined_a"))
           {
