@@ -39,7 +39,7 @@ kapt {
 }
 
 dependencies {
-    compileOnly(files("libs/framework-classes.jar", "libs/systemui-classes.jar"))
+    compileOnly(files("libs/framework-classes.jar"))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
