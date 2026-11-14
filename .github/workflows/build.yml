@@ -161,7 +161,22 @@ jobs:
           unzip -o framework-classes.zip -d app/libs
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
+        run: |
+          set +e
+          gradle :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          status=$?
+          echo "=== key lines ==="
+          grep -n -E "Could not load module|kapt|Caused by|Exception" build.log | head -150
+          echo "=== kapt logs ==="
+          find app/build -path "*kapt*" -name "*.log" -exec sh -c 'echo "== $1"; head -c 6000 "$1"' _ {} \; 2>/dev/null
+          exit $status
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - uses: actions/upload-artifact@v4
         with:
