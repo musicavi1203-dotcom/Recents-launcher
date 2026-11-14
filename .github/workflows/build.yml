@@ -116,7 +116,7 @@ jobs:
           print("removed quickstep files:", removed_files, " removed quickstep elements:", removed_el)
           EOF
 
-      - name: Generate stubs for missing colors and attributes
+      - name: Generate stubs for missing colors, dimens and attributes
         run: |
           cd launcher-src/res
           python3 - <<'EOF'
@@ -124,10 +124,18 @@ jobs:
           xmls = glob.glob("**/*.xml", recursive=True) + glob.glob("../quickstep/res/**/*.xml", recursive=True)
           all_text = "\n".join(open(f, encoding="utf-8", errors="ignore").read() for f in xmls)
 
-          defined_c = set(re.findall(r'name="([^"]+)"', all_text))
-          defined_c |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml") + glob.glob("../quickstep/res/color/*.xml")}
+          defined = set(re.findall(r'name="([^"]+)"', all_text))
+          defined |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml") + glob.glob("../quickstep/res/color/*.xml")}
+
           used_c = set(re.findall(r'@color/([A-Za-z0-9_]+)', all_text))
-          missing_c = sorted(used_c - defined_c)
+          missing_c = sorted(used_c - defined)
+
+          used_d = set(re.findall(r'@dimen/([A-Za-z0-9_]+)', all_text))
+          missing_d = sorted(used_d - defined)
+          dimen_defaults = {
+              "floating_dismiss_icon_size": "24dp",
+              "floating_dismiss_background_size": "56dp",
+          }
 
           # attributes: only the ones the code references but nothing declares
           # (disabledIconAlpha and loadingIconColor come from a module not included here)
@@ -136,11 +144,12 @@ jobs:
           os.makedirs("values", exist_ok=True)
           lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
           lines += [f'    <color name="{c}">#FF000000</color>' for c in missing_c]
+          lines += [f'    <dimen name="{d}">{dimen_defaults.get(d, "0dp")}</dimen>' for d in missing_d]
           lines += [f'    <attr name="{a}" format="reference|color|dimension|float|integer|boolean|string|fraction"/>' for a in extra_attrs]
           lines.append('</resources>')
           open("values/zz_stubs.xml", "w", encoding="utf-8").write("\n".join(lines) + "\n")
-          print("missing colors:", len(missing_c), " extra attrs:", len(extra_attrs))
-          print(" ".join(missing_c))
+          print("missing colors:", len(missing_c), " missing dimens:", len(missing_d), " extra attrs:", len(extra_attrs))
+          print(" ".join(missing_d))
           EOF
 
       - name: Restore framework and SystemUI class jars
