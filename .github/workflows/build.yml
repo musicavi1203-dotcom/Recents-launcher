@@ -1,11 +1,14 @@
-name: build-launcher
+name: patch-launcher-apk
 
 on:
   push:
+    paths:
+      - "apk/**"
+      - ".github/workflows/patch-apk.yml"
   workflow_dispatch:
 
 jobs:
-  build:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,170 +18,29 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.9
+      - name: Download apktool
+        run: curl -L -o apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
 
-      - name: Clone Launcher3 source
-        run: git clone --depth 1 --branch lineage-24.0 https://github.com/LineageOS/android_packages_apps_Launcher3.git launcher-src
-
-      - name: Remove package attribute from manifest
-        run: sed -i 's/ package="com\.android\.launcher3"//' launcher-src/AndroidManifest.xml
-
-      - name: Replace hidden system color references
+      - name: Decode the original APK
         run: |
-          cd launcher-src/res
-          grep -rl "android:color/\(system_\|customColor\)" . ../quickstep/res | xargs -r sed -i 's#android:color/\(system_\|customColor\)#@color/\1#g'
+          java -jar apktool.jar d -f apk/launcher3.apk -o decoded
+          echo "sharedUserId in manifest:"
+          grep -n "sharedUserId" decoded/AndroidManifest.xml || echo "none"
 
-      - name: Remove duplicate bare attr declarations
+      - name: Rebuild APK
+        run: java -jar apktool.jar b decoded -o out/unsigned.apk
+
+      - name: Align and sign
         run: |
-          cd launcher-src/res
-          python3 - <<'EOF'
-          import re, glob
-          files = glob.glob("values*/*.xml") + glob.glob("../quickstep/res/values*/*.xml")
-          formatted = set()
-          pat_fmt = re.compile(r'<attr\s+name="([^"]+)"\s+format=')
-          for f in files:
-              formatted |= set(pat_fmt.findall(open(f, encoding="utf-8").read()))
-          pat_bare = re.compile(r'[ \t]*<attr\s+name="([^"]+)"\s*/>[ \t]*\n?')
-          removed = 0
-          for f in files:
-              s = open(f, encoding="utf-8").read()
-              def repl(m):
-                  global removed
-                  if m.group(1) in formatted:
-                      removed += 1
-                      return ""
-                  return m.group(0)
-              s2 = pat_bare.sub(repl, s)
-              if s2 != s:
-                  open(f, "w", encoding="utf-8").write(s2)
-          print("removed bare duplicate attr declarations:", removed)
-          EOF
-
-      - name: Remove quickstep resources that duplicate main resources
-        run: |
-          cd launcher-src/res
-          python3 - ../quickstep/res <<'EOF'
-          import glob, os, re, sys
-          import xml.etree.ElementTree as ET
-          QS = sys.argv[1]
-          RESOURCE_TAGS = {"dimen","color","string","integer","bool","fraction","style","plurals","array","string-array","integer-array","declare-styleable","id"}
-          def key_of(el):
-              name = el.get("name")
-              if not name:
-                  return None
-              if el.tag == "item":
-                  t = el.get("type")
-                  return (t, name) if t else None
-              return (el.tag, name) if el.tag in RESOURCE_TAGS else None
-          main_keys = set()
-          for f in glob.glob("values*/*.xml"):
-              try:
-                  for el in ET.parse(f).getroot():
-                      k = key_of(el)
-                      if k:
-                          main_keys.add(k)
-              except ET.ParseError as e:
-                  print("PARSE FAIL main", f, e)
-          # whole files in non-values folders that also exist in main, and color/<name>.xml defined in main values
-          removed_files = 0
-          for f in glob.glob(f"{QS}/**/*.xml", recursive=True):
-              rel = os.path.relpath(f, QS)
-              d = os.path.dirname(rel)
-              base = os.path.splitext(os.path.basename(rel))[0]
-              if d.startswith("values"):
-                  continue
-              if os.path.exists(rel) or (d == "color" and ("color", base) in main_keys):
-                  os.remove(f)
-                  removed_files += 1
-          # single elements in quickstep values files that main already defines
-          removed_el = 0
-          for f in glob.glob(f"{QS}/values*/*.xml"):
-              text = open(f, encoding="utf-8").read()
-              for p, uri in re.findall(r'xmlns:(\w+)="([^"]+)"', text):
-                  ET.register_namespace(p, uri)
-              try:
-                  root = ET.fromstring(text.encode("utf-8"))
-              except ET.ParseError as e:
-                  print("PARSE FAIL qs", f, e)
-                  continue
-              before = removed_el
-              for child in list(root):
-                  k = key_of(child)
-                  if k and k in main_keys:
-                      root.remove(child)
-                      removed_el += 1
-              if removed_el != before:
-                  ET.ElementTree(root).write(f, encoding="utf-8", xml_declaration=True)
-          print("removed quickstep files:", removed_files, " removed quickstep elements:", removed_el)
-          EOF
-
-      - name: Generate stubs for missing colors, dimens, styles and attributes
-        run: |
-          cd launcher-src/res
-          python3 - <<'EOF'
-          import glob, os, re
-          xmls = glob.glob("**/*.xml", recursive=True) + glob.glob("../quickstep/res/**/*.xml", recursive=True)
-          all_text = "\n".join(open(f, encoding="utf-8", errors="ignore").read() for f in xmls)
-
-          defined = set(re.findall(r'name="([^"]+)"', all_text))
-          defined |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml") + glob.glob("../quickstep/res/color/*.xml")}
-
-          used_c = set(re.findall(r'@color/([A-Za-z0-9_]+)', all_text))
-          missing_c = sorted(used_c - defined)
-
-          used_d = set(re.findall(r'@dimen/([A-Za-z0-9_]+)', all_text))
-          missing_d = sorted(used_d - defined)
-          dimen_defaults = {
-              "floating_dismiss_icon_size": "24dp",
-              "floating_dismiss_background_size": "56dp",
-          }
-
-          # styles: explicit list only (styles from Material/Preference/AppCompat already exist in those libraries,
-          # so they are not stubbed to avoid overriding their look)
-          extra_styles = ["Theme", "Switch", "Switch.SettingsLib", "Theme.Material3", "Theme.Material3.DynamicColors"]
-
-          # attributes: only the ones the code references but nothing declares
-          # (disabledIconAlpha and loadingIconColor come from a module not included here)
-          extra_attrs = ["disabledIconAlpha", "loadingIconColor"]
-
-          os.makedirs("values", exist_ok=True)
-          lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
-          lines += [f'    <color name="{c}">#FF000000</color>' for c in missing_c]
-          lines += [f'    <dimen name="{d}">{dimen_defaults.get(d, "0dp")}</dimen>' for d in missing_d]
-          lines += [f'    <style name="{s}"/>' for s in extra_styles]
-          lines += [f'    <attr name="{a}" format="reference|color|dimension|float|integer|boolean|string|fraction"/>' for a in extra_attrs]
-          lines.append('</resources>')
-          open("values/zz_stubs.xml", "w", encoding="utf-8").write("\n".join(lines) + "\n")
-          print("missing colors:", len(missing_c), " missing dimens:", len(missing_d), " extra styles:", len(extra_styles), " extra attrs:", len(extra_attrs))
-          EOF
-
-      - name: Restore framework and SystemUI class jars
-        run: |
-          mkdir -p app/libs
-          cat libs/fc_part1.bin libs/fc_part2.bin > framework-classes.zip
-          unzip -o framework-classes.zip -d app/libs
-
-      - name: Build debug APK
-        run: |
-          set +e
-          gradle :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
-          status=$?
-          echo "=== key lines ==="
-          grep -n -E "Could not load module|kapt|Caused by|Exception" build.log | head -150
-          echo "=== kapt logs ==="
-          find app/build -path "*kapt*" -name "*.log" -exec sh -c 'echo "== $1"; head -c 6000 "$1"' _ {} \; 2>/dev/null
-          exit $status
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort | tail -1)
+          "$BT/zipalign" -f -p 4 out/unsigned.apk out/aligned.apk
+          keytool -genkeypair -keystore debug.jks -storepass android -keypass android \
+            -alias patch -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=patch" >/dev/null 2>&1
+          "$BT/apksigner" sign --ks debug.jks --ks-pass pass:android --key-pass pass:android \
+            --ks-key-alias patch --out out/launcher3-patched.apk out/aligned.apk
+          ls -l out/launcher3-patched.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: launcher-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: launcher3-patched
+          path: out/launcher3-patched.apk
