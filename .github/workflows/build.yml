@@ -36,7 +36,7 @@ jobs:
         run: |
           cd launcher-src/res
           mkdir -p values
-          defined_c=$(grep -rhoE '<color name="[^"]+"' . | sed 's/<color name="//;s/"//' | sort -u)
+          defined_c=$( ( grep -rhoE '<color name="[^"]+"' . | sed 's/<color name="//;s/"//'; ls color 2>/dev/null | sed 's/\.xml$//' ) | sort -u)
           used_c=$(grep -rhoE '@color/[A-Za-z0-9_]+' . | sed 's#@color/##' | sort -u)
           missing_c=$(comm -23 <(echo "$used_c") <(echo "$defined_c"))
           defined_a=$(grep -rhoE '<attr name="[^"]+"' . | sed 's/<attr name="//;s/"//' | sort -u)
