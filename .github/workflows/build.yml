@@ -51,6 +51,13 @@ jobs:
           } > values/zz_stubs.xml
           echo "missing colors: $(echo "$missing_c" | grep -c .)  missing attrs: $(echo "$missing_a" | grep -c .)"
 
+      - name: Print duplicate resource names in values
+        run: |
+          cd launcher-src/res
+          dups=$(find values -name '*.xml' -print0 | xargs -0 grep -hoE '<(color|attr|string|dimen|integer|bool|fraction|declare-styleable) name="[^"]+"' | sed -E 's/.*name="//;s/"//' | sort | uniq -d)
+          echo "duplicate names: $(echo "$dups" | grep -c .)"
+          echo "$dups"
+
       - name: Restore framework and SystemUI class jars
         run: |
           mkdir -p app/libs
