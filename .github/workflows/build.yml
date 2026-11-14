@@ -68,21 +68,48 @@ jobs:
       - name: Generate stubs for missing colors and attributes
         run: |
           cd launcher-src/res
-          mkdir -p values
-          defined_c=$( ( grep -rhoE 'name="[^"]+"' --include=*.xml . | sed 's/name="//;s/"//'; ls color 2>/dev/null | sed 's/\.xml$//' ) | sort -u)
-          used_c=$(grep -rhoE '@color/[A-Za-z0-9_]+' . | sed 's#@color/##' | sort -u)
-          missing_c=$(comm -23 <(echo "$used_c") <(echo "$defined_c"))
-          defined_a=$( (grep -rhoE '<attr name="[^"]+"' . ; grep -rhE 'type="attr"' . | grep -oE 'name="[^"]+"') | sed -E 's/<attr name="//;s/name="//;s/"//' | sort -u)
-          used_a=$( (grep -rhoE '<item name="[A-Za-z0-9_]+"' . ; grep -rhoE '[?@]attr/[A-Za-z0-9_]+' .) | sed -E 's/<item name="//;s/"$//;s/[?@]attr\///' | sort -u)
-          missing_a=$(comm -23 <(echo "$used_a") <(echo "$defined_a"))
-          {
-            echo '<?xml version="1.0" encoding="utf-8"?>'
-            echo '<resources>'
-            for c in $missing_c; do echo "    <color name=\"$c\">#FF000000</color>"; done
-            for a in $missing_a; do echo "    <attr name=\"$a\" format=\"reference|color|dimension|float|integer|boolean|string|fraction\"/>"; done
-            echo '</resources>'
-          } > values/zz_stubs.xml
-          echo "missing colors: $(echo "$missing_c" | grep -c .)  missing attrs: $(echo "$missing_a" | grep -c .)"
+          python3 - <<'EOF'
+          import glob, os, re
+          import xml.etree.ElementTree as ET
+          xmls = glob.glob("**/*.xml", recursive=True)
+          text = {f: open(f, encoding="utf-8", errors="ignore").read() for f in xmls}
+          all_text = "\n".join(text.values())
+
+          # colors
+          defined_c = set(re.findall(r'name="([^"]+)"', all_text))
+          defined_c |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml")}
+          used_c = set(re.findall(r'@color/([A-Za-z0-9_]+)', all_text))
+          missing_c = sorted(used_c - defined_c)
+
+          # attrs: defined = attr declarations (any form)
+          defined_a = set(re.findall(r'<attr\s+name="([^"]+)"', all_text))
+          defined_a |= set(re.findall(r'type="attr"[^>]*name="([^"]+)"', all_text))
+          defined_a |= set(re.findall(r'name="([^"]+)"[^>]*type="attr"', all_text))
+          # used: ?attr/ and @attr/ refs, plus style items without a type or namespace
+          used_a = set(re.findall(r'\?attr/([A-Za-z0-9_]+)', all_text)) | set(re.findall(r'@attr/([A-Za-z0-9_]+)', all_text))
+          for f in xmls:
+              if not os.path.basename(os.path.dirname(f)).startswith("values"):
+                  continue
+              try:
+                  root = ET.parse(f).getroot()
+              except ET.ParseError:
+                  continue
+              for style in root.iter("style"):
+                  for item in style.iter("item"):
+                      n = item.get("name", "")
+                      if n and ":" not in n and item.get("type") is None:
+                          used_a.add(n)
+          missing_a = sorted(used_a - defined_a)
+
+          os.makedirs("values", exist_ok=True)
+          lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
+          lines += [f'    <color name="{c}">#FF000000</color>' for c in missing_c]
+          lines += [f'    <attr name="{a}" format="reference|color|dimension|float|integer|boolean|string|fraction"/>' for a in missing_a]
+          lines.append('</resources>')
+          open("values/zz_stubs.xml", "w", encoding="utf-8").write("\n".join(lines) + "\n")
+          print("missing colors:", len(missing_c), " missing attrs:", len(missing_a))
+          print("attrs:", " ".join(missing_a))
+          EOF
 
       - name: Restore framework and SystemUI class jars
         run: |
