@@ -61,22 +61,59 @@ jobs:
       - name: Remove quickstep resources that duplicate main resources
         run: |
           cd launcher-src/res
-          python3 - <<'EOF'
-          import glob, re
-          TAGS = "dimen|color|string|integer|bool|fraction"
-          main_names = set()
+          python3 - ../quickstep/res <<'EOF'
+          import glob, os, re, sys
+          import xml.etree.ElementTree as ET
+          QS = sys.argv[1]
+          RESOURCE_TAGS = {"dimen","color","string","integer","bool","fraction","style","plurals","array","string-array","integer-array","declare-styleable","id"}
+          def key_of(el):
+              name = el.get("name")
+              if not name:
+                  return None
+              if el.tag == "item":
+                  t = el.get("type")
+                  return (t, name) if t else None
+              return (el.tag, name) if el.tag in RESOURCE_TAGS else None
+          main_keys = set()
           for f in glob.glob("values*/*.xml"):
-              s = open(f, encoding="utf-8").read()
-              main_names |= set(re.findall(rf'<({TAGS})\s+name="([^"]+)"', s))
-          removed = 0
-          for f in glob.glob("../quickstep/res/values*/*.xml"):
-              s = open(f, encoding="utf-8").read()
-              for tag, name in sorted(main_names):
-                  pat = re.compile(rf'[ \t]*<{tag}\s+name="{re.escape(name)}"[^>]*?(?:/>|>.*?</{tag}>)[ \t]*\n?', re.S)
-                  s, k = pat.subn("", s)
-                  removed += k
-              open(f, "w", encoding="utf-8").write(s)
-          print("removed quickstep duplicates:", removed)
+              try:
+                  for el in ET.parse(f).getroot():
+                      k = key_of(el)
+                      if k:
+                          main_keys.add(k)
+              except ET.ParseError as e:
+                  print("PARSE FAIL main", f, e)
+          # whole files in non-values folders that also exist in main, and color/<name>.xml defined in main values
+          removed_files = 0
+          for f in glob.glob(f"{QS}/**/*.xml", recursive=True):
+              rel = os.path.relpath(f, QS)
+              d = os.path.dirname(rel)
+              base = os.path.splitext(os.path.basename(rel))[0]
+              if d.startswith("values"):
+                  continue
+              if os.path.exists(rel) or (d == "color" and ("color", base) in main_keys):
+                  os.remove(f)
+                  removed_files += 1
+          # single elements in quickstep values files that main already defines
+          removed_el = 0
+          for f in glob.glob(f"{QS}/values*/*.xml"):
+              text = open(f, encoding="utf-8").read()
+              for p, uri in re.findall(r'xmlns:(\w+)="([^"]+)"', text):
+                  ET.register_namespace(p, uri)
+              try:
+                  root = ET.fromstring(text.encode("utf-8"))
+              except ET.ParseError as e:
+                  print("PARSE FAIL qs", f, e)
+                  continue
+              before = removed_el
+              for child in list(root):
+                  k = key_of(child)
+                  if k and k in main_keys:
+                      root.remove(child)
+                      removed_el += 1
+              if removed_el != before:
+                  ET.ElementTree(root).write(f, encoding="utf-8", xml_declaration=True)
+          print("removed quickstep files:", removed_files, " removed quickstep elements:", removed_el)
           EOF
 
       - name: Generate stubs for missing colors and attributes
