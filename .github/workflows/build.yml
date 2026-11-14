@@ -22,6 +22,9 @@ jobs:
       - name: Clone Launcher3 source
         run: git clone --depth 1 --branch lineage-24.0 https://github.com/LineageOS/android_packages_apps_Launcher3.git launcher-src
 
+      - name: Remove package attribute from manifest
+        run: sed -i 's/ package="com\.android\.launcher3"//' launcher-src/AndroidManifest.xml
+
       - name: Replace hidden system color references
         run: |
           cd launcher-src/res
