@@ -21,7 +21,10 @@ android {
         "../launcher-src/quickstep/src",
         "../launcher-src/src_plugins"
     )
-    sourceSets["main"].res.srcDirs("../launcher-src/res")
+    sourceSets["main"].res.srcDirs(
+        "../launcher-src/res",
+        "../launcher-src/quickstep/res"
+    )
     sourceSets["main"].manifest.srcFile("../launcher-src/AndroidManifest.xml")
 
     compileOptions {
