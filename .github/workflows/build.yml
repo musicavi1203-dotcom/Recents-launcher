@@ -22,11 +22,6 @@ jobs:
       - name: Clone Launcher3 source
         run: git clone --depth 1 --branch lineage-24.0 https://github.com/LineageOS/android_packages_apps_Launcher3.git launcher-src
 
-      - name: Rename package
-        run: |
-          cd launcher-src
-          grep -rl "com.android.launcher3" --exclude-dir=.git . | xargs -r sed -i 's/com\.android\.launcher3/com.abraham.recentslauncher/g'
-
       - name: Replace hidden system color references
         run: |
           cd launcher-src/res
