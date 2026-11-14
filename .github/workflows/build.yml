@@ -26,6 +26,11 @@ jobs:
           cd launcher-src
           grep -rl "com.android.launcher3" --exclude-dir=.git . | xargs -r sed -i 's/com\.android\.launcher3/com.abraham.recentslauncher/g'
 
+      - name: Remove resources that reference hidden system colors
+        run: |
+          grep -rl "android:color/system_" launcher-src/res | xargs -r rm -f
+          echo "references left: $(grep -rl 'android:color/system_' launcher-src/res | wc -l)"
+
       - name: Restore framework and SystemUI class jars
         run: |
           mkdir -p app/libs
