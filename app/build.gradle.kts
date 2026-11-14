@@ -34,6 +34,10 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
+kapt {
+    correctErrorTypes = true
+}
+
 dependencies {
     compileOnly(files("libs/framework-classes.jar", "libs/systemui-classes.jar"))
 
