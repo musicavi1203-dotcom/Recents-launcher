@@ -1,0 +1,41 @@
+name: build-launcher
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Clone Launcher3 source
+        run: git clone --depth 1 --branch lineage-24.0 https://github.com/LineageOS/android_packages_apps_Launcher3.git launcher-src
+
+      - name: Rename package
+        run: |
+          cd launcher-src
+          grep -rl "com.android.launcher3" --exclude-dir=.git . | xargs -r sed -i 's/com\.android\.launcher3/com.abraham.recentslauncher/g'
+
+      - name: Restore framework and SystemUI class jars
+        run: |
+          mkdir -p app/libs
+          cat libs/fc_part1.bin libs/fc_part2.bin > framework-classes.zip
+          unzip -o framework-classes.zip -d app/libs
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-debug
+          path: app/build/outputs/apk/debug/*.apk
