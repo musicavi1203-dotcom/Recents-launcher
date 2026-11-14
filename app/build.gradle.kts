@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.abraham.recentslauncher"
+    namespace = "com.android.launcher3"
     compileSdk = 35
 
     defaultConfig {
