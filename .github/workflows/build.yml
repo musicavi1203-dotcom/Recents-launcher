@@ -27,18 +27,29 @@ jobs:
           cd launcher-src
           grep -rl "com.android.launcher3" --exclude-dir=.git . | xargs -r sed -i 's/com\.android\.launcher3/com.abraham.recentslauncher/g'
 
-      - name: Replace hidden system color references with stubs
+      - name: Replace hidden system color references
         run: |
           cd launcher-src/res
           grep -rl "android:color/system_" . | xargs -r sed -i 's#android:color/system_#@color/system_#g'
+
+      - name: Generate stubs for missing colors and attributes
+        run: |
+          cd launcher-src/res
           mkdir -p values
+          defined_c=$(grep -rhoE '<color name="[^"]+"' . | sed 's/<color name="//;s/"//' | sort -u)
+          used_c=$(grep -rhoE '@color/[A-Za-z0-9_]+' . | sed 's#@color/##' | sort -u)
+          missing_c=$(comm -23 <(echo "$used_c") <(echo "$defined_c"))
+          defined_a=$(grep -rhoE '<attr name="[^"]+"' . | sed 's/<attr name="//;s/"//' | sort -u)
+          used_a=$( (grep -rhoE '<item name="[A-Za-z0-9_]+"' . ; grep -rhoE '[?@]attr/[A-Za-z0-9_]+' .) | sed -E 's/<item name="//;s/"$//;s/[?@]attr\///' | sort -u)
+          missing_a=$(comm -23 <(echo "$used_a") <(echo "$defined_a"))
           {
             echo '<?xml version="1.0" encoding="utf-8"?>'
             echo '<resources>'
-            grep -rhoE '@color/system_[A-Za-z0-9_]+' . | sort -u | sed 's|@color/\(.*\)|    <color name="\1">#FF000000</color>|'
+            for c in $missing_c; do echo "    <color name=\"$c\">#FF000000</color>"; done
+            for a in $missing_a; do echo "    <attr name=\"$a\" format=\"reference|color|dimension|float|integer|boolean|string|fraction\"/>"; done
             echo '</resources>'
-          } > values/zz_stub_colors.xml
-          echo "stub colors: $(grep -c '<color' values/zz_stub_colors.xml)"
+          } > values/zz_stubs.xml
+          echo "missing colors: $(echo "$missing_c" | grep -c .)  missing attrs: $(echo "$missing_a" | grep -c .)"
 
       - name: Restore framework and SystemUI class jars
         run: |
