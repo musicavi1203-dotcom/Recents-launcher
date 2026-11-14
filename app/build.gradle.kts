@@ -33,11 +33,17 @@ android {
 
 dependencies {
     compileOnly(files("libs/framework-classes.jar", "libs/systemui-classes.jar"))
+    implementation(fileTree(mapOf("dir" to "app/libs", "include" to listOf("*.jar"))))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("androidx.fragment:fragment-ktx:1.8.2")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("com.google.android.material:material:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.3")
     implementation("com.google.dagger:dagger:2.51.1")
