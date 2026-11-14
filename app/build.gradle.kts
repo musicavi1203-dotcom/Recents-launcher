@@ -47,6 +47,7 @@ dependencies {
     implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("com.airbnb.android:lottie:6.4.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.3")
     implementation("com.google.dagger:dagger:2.51.1")
