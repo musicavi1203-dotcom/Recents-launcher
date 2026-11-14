@@ -30,14 +30,14 @@ jobs:
       - name: Replace hidden system color references
         run: |
           cd launcher-src/res
-          grep -rl "android:color/system_" . | xargs -r sed -i 's#android:color/system_#@color/system_#g'
+          grep -rl "android:color/system_" . ../quickstep/res | xargs -r sed -i 's#android:color/system_#@color/system_#g'
 
       - name: Remove duplicate bare attr declarations
         run: |
           cd launcher-src/res
           python3 - <<'EOF'
           import re, glob
-          files = glob.glob("values*/*.xml")
+          files = glob.glob("values*/*.xml") + glob.glob("../quickstep/res/values*/*.xml")
           formatted = set()
           pat_fmt = re.compile(r'<attr\s+name="([^"]+)"\s+format=')
           for f in files:
@@ -58,25 +58,30 @@ jobs:
           print("removed bare duplicate attr declarations:", removed)
           EOF
 
-      - name: Generate stubs for missing colors
+      - name: Generate stubs for missing colors and attributes
         run: |
           cd launcher-src/res
           python3 - <<'EOF'
           import glob, os, re
-          xmls = glob.glob("**/*.xml", recursive=True)
+          xmls = glob.glob("**/*.xml", recursive=True) + glob.glob("../quickstep/res/**/*.xml", recursive=True)
           all_text = "\n".join(open(f, encoding="utf-8", errors="ignore").read() for f in xmls)
 
           defined_c = set(re.findall(r'name="([^"]+)"', all_text))
-          defined_c |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml")}
+          defined_c |= {os.path.splitext(os.path.basename(f))[0] for f in glob.glob("color/*.xml") + glob.glob("../quickstep/res/color/*.xml")}
           used_c = set(re.findall(r'@color/([A-Za-z0-9_]+)', all_text))
           missing_c = sorted(used_c - defined_c)
+
+          # attributes: only the ones the code references but nothing declares
+          # (disabledIconAlpha and loadingIconColor come from a module not included here)
+          extra_attrs = ["disabledIconAlpha", "loadingIconColor"]
 
           os.makedirs("values", exist_ok=True)
           lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
           lines += [f'    <color name="{c}">#FF000000</color>' for c in missing_c]
+          lines += [f'    <attr name="{a}" format="reference|color|dimension|float|integer|boolean|string|fraction"/>' for a in extra_attrs]
           lines.append('</resources>')
           open("values/zz_stubs.xml", "w", encoding="utf-8").write("\n".join(lines) + "\n")
-          print("missing colors:", len(missing_c))
+          print("missing colors:", len(missing_c), " extra attrs:", len(extra_attrs))
           print(" ".join(missing_c))
           EOF
 
