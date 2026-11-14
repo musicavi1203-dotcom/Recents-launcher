@@ -1,0 +1,27 @@
+name: fetch-launcher
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Launcher3 (lineage-24.0)
+        run: git clone --depth 1 --branch lineage-24.0 https://github.com/LineageOS/android_packages_apps_Launcher3.git launcher-src
+
+      - name: Rename package to com.abraham.recentslauncher
+        run: |
+          cd launcher-src
+          grep -rl "com.android.launcher3" --exclude-dir=.git . | xargs -r sed -i 's/com\.android\.launcher3/com.abraham.recentslauncher/g'
+
+      - name: Print structure and file counts
+        run: |
+          cd launcher-src
+          echo "Kotlin files: $(find . -name '*.kt' | wc -l)"
+          echo "Java files: $(find . -name '*.java' | wc -l)"
+          echo "Android.bp files: $(find . -name 'Android.bp' | wc -l)"
+          echo "--- top level ---"
+          ls
+          echo "--- quickstep/src ---"
+          ls quickstep/src/com/android/quickstep | head -80
