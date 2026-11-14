@@ -1,6 +1,7 @@
 name: build-launcher
 
 on:
+  push:
   workflow_dispatch:
 
 jobs:
@@ -26,10 +27,18 @@ jobs:
           cd launcher-src
           grep -rl "com.android.launcher3" --exclude-dir=.git . | xargs -r sed -i 's/com\.android\.launcher3/com.abraham.recentslauncher/g'
 
-      - name: Remove resources that reference hidden system colors
+      - name: Replace hidden system color references with stubs
         run: |
-          grep -rl "android:color/system_" launcher-src/res | xargs -r rm -f
-          echo "references left: $(grep -rl 'android:color/system_' launcher-src/res | wc -l)"
+          cd launcher-src/res
+          grep -rl "android:color/system_" . | xargs -r sed -i 's#android:color/system_#@color/system_#g'
+          mkdir -p values
+          {
+            echo '<?xml version="1.0" encoding="utf-8"?>'
+            echo '<resources>'
+            grep -rhoE '@color/system_[A-Za-z0-9_]+' . | sort -u | sed 's|@color/\(.*\)|    <color name="\1">#FF000000</color>|'
+            echo '</resources>'
+          } > values/zz_stub_colors.xml
+          echo "stub colors: $(grep -c '<color' values/zz_stub_colors.xml)"
 
       - name: Restore framework and SystemUI class jars
         run: |
